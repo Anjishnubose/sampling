@@ -10,10 +10,22 @@ Modify the number of repetitions in the simulation to 100 (from the original 100
 
 Alter the code so that it is reproducible. Describe the changes you made to the code and how they affected the reproducibility of the script file. The output does not need to match Whitby’s original blogpost/graphs, it just needs to produce the same output when run multiple times
 
-# Author: YOUR NAME
+# Author: ANJISHNU BOSE
 
 ```
-Please write your explanation here...
+The given code in whitby_covid_tracing.py tries to implement a function to simulate the model outlined in the blogpost. However, it is different in quite a few implementations.
+
+We start with defining the two events : wedding and brunch. The original blogpost outlined a scenario where we have a small number of wedding with a large number of attendees each (eg. 2 weddings with 100 attendees each), and a large number of brunches with a small number of attendees (eq. 80 different brunches with 10 attendees each). This simple toy model attempts to simulate a real world scenario in a population of N=1000. However, the code immediately deviates by just having two event classification : one wedding with 200 people, and one brunch with 800 people!
+
+Next, the blogpost assumes a 10% (ATTACK_RATE variable) infection chance for each person independently. This is again different than the implementation in the code where a numpy sampling function np.random.choice() is used to randomly select 10% of the total population (100) without replacement. This is different cause in the former 10$ of the sample on average would get infected, not always. The latter is not assuming infections to be independent from each other. 
+
+We then assume a uniform probability of being able to trace an infected person with probability 20% (TRACE_SUCCESS variable). We randomly sample 100 uniformly distributed random variables using np.random.rand() corresponding to each infected person. Whenever these variables are less than 0.2, the corresponding infected person is succesfully traced. This is followed by counting the total succesful traces per event category. If any event is found to have more than 2 (SECONDARY_TRACE_THRESHOLD) traces, all the infected people in that category are assumed to be traced succesfully.
+
+Its evident that this is not the original model given in the blogpost. the entire point of that model is to highlight that since the number of attendees in small social gathering is generally much smaller than large events like weddings, the chance of having two independent (primary and secondary) traces into the same event like a brunch is highly unlikely. Hence in the total traced cases, small social gatherings will be underrepresented, or equivalently large gatherings like a wedding will be overrepresented. This is NOT the case with the current implementation since we have two large events with 200 and 800 people. In fact, we actually recover the true distribution with a high level of accuracy.
+
+Since the code involves sampling 100 people out of 1000 to get infected, along with randomly selecting succesfull traces, it involves some randomness. Therefore, in general the plots are not reproducible. They can be made reproducible by fixing a random seed in numpy.
+
+In my version of the simulation, I follow the blogpost more closely and define events w_i. i={1, 2}, and b_i, i={1, 2, ..., 80} to represent the different weddings and brunches (the code is more general but I am sticking with the numbers in the blogpost for simplicity). We then infect people independently by sampling 1000 uniformly distributed random variables such that whenever the random number is < 0.1, the person is infected. Everything else stays the same and now we see that our plots reproduce the blogpost. Lastly, to make things reproducible we set the seed to be equal to the simulation index each time. The simulation is run multiple times, each run with a fixed seed and hence is totally reproducible for a fixed number of runs (n_runs). 
 
 ```
 
