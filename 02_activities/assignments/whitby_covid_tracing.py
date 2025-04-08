@@ -16,6 +16,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 ATTACK_RATE = 0.10
 TRACE_SUCCESS = 0.20
 SECONDARY_TRACE_THRESHOLD = 2
+n_runs = 1000
 
 def simulate_event(m):
   """
@@ -67,17 +68,93 @@ def simulate_event(m):
 
   return p_wedding_infections, p_wedding_traces
 
-# Run the simulation 1000 times
-results = [simulate_event(m) for m in range(1000)]
-props_df = pd.DataFrame(results, columns=["Infections", "Traces"])
+# Function which simulates the moel in the blogpost.
+def simulate_event_whitby(m:int, weddings:int, brunches:int, people_in_weddings:int, people_in_brunches:int):
+  """
+  Simulates the infection and tracing process for a series of events.
+  
+  This function creates a DataFrame representing individuals attending weddings and brunches,
+  infects a subset of them based on the ATTACK_RATE, performs primary and secondary contact tracing,
+  and calculates the proportions of infections and traced cases that are attributed to weddings.
+  
+  Parameters:
+  - m: Dummy parameter for iteration purposes.
+  
+  Returns:
+  - A tuple containing the proportion of infections and the proportion of traced cases
+    that are attributed to weddings.
+  """
+  # Create DataFrame for people at events with initial infection and traced status
+  # Differentiate between weddings each with people_in_weddings number of attendees
+  wedding_events = np.repeat([f'w{i+1}' for i in range(weddings)], people_in_weddings) 
+  # Differentiate between brunches each with people_in_brunches number of attendees
+  brunch_events = np.repeat([f'b{i+1}' for i in range(brunches)], people_in_brunches)
+  # Total events
+  events = np.concatenate([wedding_events, brunch_events])
+  
+  # total size of sample  = number of weddings * people_in_weddings + number of brunches * people_in_brunches
+  total_size = len(events)
+  
+  ppl = pd.DataFrame({
+      'event': events,
+      'infected': False,
+      'traced': np.nan  # Initially setting traced status as NaN
+  })
+
+  # Explicitly set 'traced' column to nullable boolean type
+  ppl['traced'] = ppl['traced'].astype(pd.BooleanDtype())
+  # Casting events to string type
+  ppl['event'] = ppl['event'].astype(str)
+
+  # Infect people such that each person has a ATTACK_RATE chance of being infected. 
+  # This is different than ALWAYS infecting 10% of the people in the event. 
+  # Infections in this case are all IIDs and on average will infect 10% of the people in the event.
+  
+  np.random.seed(m)  # For reproducibility
+  infected_indices = np.random.rand(total_size) < ATTACK_RATE
+  ppl.loc[infected_indices, 'infected'] = True
+  
+  # Everything else in the analysis remains the same
+  # But now we ephasize the point of the blogpost. 
+  # Since the number of attendees in a brunch are much smaller, it is much less likely to have a secondary trace to that event.
+  # Hence brunches will be underaccounted for in the contact tracing.
+
+  # Primary contact tracing: randomly decide which infected people get traced
+  ppl.loc[ppl['infected'], 'traced'] = np.random.rand(sum(ppl['infected'])) < TRACE_SUCCESS
+
+  # Secondary contact tracing based on event attendance
+  event_trace_counts = ppl[ppl['traced'] == True]['event'].value_counts()
+  events_traced = event_trace_counts[event_trace_counts >= SECONDARY_TRACE_THRESHOLD].index
+  ppl.loc[ppl['event'].isin(events_traced) & ppl['infected'], 'traced'] = True
+
+  # Calculate proportions of infections and traces attributed to each event type
+  ppl['event_type'] = ppl['event'].str[0]  # 'w' for wedding, 'b' for brunch
+  wedding_infections = sum(ppl['infected'] & (ppl['event_type'] == 'w'))
+  brunch_infections = sum(ppl['infected'] & (ppl['event_type'] == 'b'))
+  p_wedding_infections = wedding_infections / (wedding_infections + brunch_infections)
+
+  wedding_traces = sum(ppl['infected'] & ppl['traced'] & (ppl['event_type'] == 'w'))
+  brunch_traces = sum(ppl['infected'] & ppl['traced'] & (ppl['event_type'] == 'b'))
+  p_wedding_traces = wedding_traces / (wedding_traces + brunch_traces)
+
+  return p_wedding_infections, p_wedding_traces
+
+# Run the simulation multiple times
+# results = [simulate_event(m) for m in range(n_runs)]
+# props_df = pd.DataFrame(results, columns=["Infections", "Traces"])
+
+results_whitby = [simulate_event_whitby(m, weddings=2, brunches=80, people_in_weddings=100, people_in_brunches=10) for m in range(n_runs)]
+props_df_whitby = pd.DataFrame(results_whitby, columns=["Infections", "Traces"])
 
 # Plotting the results
 plt.figure(figsize=(10, 6))
-sns.histplot(props_df['Infections'], color="blue", alpha=0.75, binwidth=0.05, kde=False, label='Infections from Weddings')
-sns.histplot(props_df['Traces'], color="red", alpha=0.75, binwidth=0.05, kde=False, label='Traced to Weddings')
+sns.histplot(props_df_whitby['Infections'], color="blue", alpha=0.75, binwidth=0.05, kde=False, label='Infections from Weddings')
+sns.histplot(props_df_whitby['Traces'], color="red", alpha=0.75, binwidth=0.05, kde=False, label='Traced to Weddings')
 plt.xlabel("Proportion of cases")
 plt.ylabel("Frequency")
 plt.title("Impact of Contact Tracing on Perceived Infection Sources")
 plt.legend()
+plt.xlim(0, 1)
 plt.tight_layout()
 plt.show()
+
